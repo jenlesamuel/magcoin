@@ -1,3 +1,4 @@
 tmp/blocks/*
 notes/
-./magcoin
+magcoin
+*.pem

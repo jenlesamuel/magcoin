@@ -2,71 +2,94 @@ package blockchain
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"encoding/binary"
-	"fmt"
+	"encoding/gob"
+	"errors"
 	"math/big"
 	"time"
 
 	"github.com/jenlesamuel/magcoin/share"
 )
 
+const MaxBlockSize = 5
+
+var ErrMaxBlockSizeExceeded = errors.New("maximum block size exceeded")
+
 type Block struct {
 	Version      [4]byte
 	PreviousHash [32]byte
-	Data         [32]byte
+	MerkleRoot   [32]byte
 	Nonce        [4]byte
 	Target       [32]byte
 	Timestamp    [8]byte
+	Coinbase     *CoinbaseTransaction
+	// had issue with encoding block, so had to separate coinbase from standard transaction
+	Transactions []*StdTransaction
 }
 
-func NewBlock(version [4]byte, previousHash, data [32]byte) *Block {
+func DecodeToBlock(data []byte) (*Block, error) {
+	r := bytes.NewReader(data)
 
-	timestamp := time.Now().Unix()
-	block := &Block{
-		Version:      version,
-		PreviousHash: previousHash,
-		Data:         data,
-		Timestamp:    share.Int64ToByte8(timestamp),
+	decoder := gob.NewDecoder(r)
+	block := new(Block)
+	if err := decoder.Decode(block); err != nil {
+		return nil, err
 	}
 
-	pow := NewProofOfWork(block)
-	pow.Run()
-
-	return block
+	return block, nil
 }
 
-func FromBytes(data []byte) (*Block, error) {
-	buff := bytes.NewBuffer(data)
-	b := new(Block)
-
-	err := binary.Read(buff, binary.BigEndian, b)
-	if err != nil {
-		return nil, fmt.Errorf("error creating block from bytes: %s", err)
-	}
-
-	return b, nil
-}
-
-func (block *Block) HeaderHashFromNonce(nonce [4]byte) [32]byte {
+func (block *Block) HeaderHashWithNonce(nonce [4]byte) [32]byte {
 	concat := bytes.Join([][]byte{
 		block.Version[:],
 		block.PreviousHash[:],
-		block.Data[:],
+		block.MerkleRoot[:],
 		nonce[:],
 		block.Timestamp[:],
 	}, []byte{})
 
-	firstHash := sha256.Sum256(concat)
-
-	return sha256.Sum256(firstHash[:])
+	return share.DoubleSha256(concat)
 }
 
 func (block *Block) HeaderHash() [32]byte {
-	return block.HeaderHashFromNonce(block.Nonce)
+	return block.HeaderHashWithNonce(block.Nonce)
 }
 
-func (block *Block) Validate() bool {
+func (block *Block) Encode() ([]byte, error) {
+	buff := new(bytes.Buffer)
+
+	encoder := gob.NewEncoder(buff)
+	if err := encoder.Encode(block); err != nil {
+		return make([]byte, 0), err
+	}
+
+	return buff.Bytes(), nil
+}
+
+func (block *Block) AddTransaction(trx *StdTransaction) error {
+	if len(block.Transactions) > MaxBlockSize {
+		return ErrMaxBlockSizeExceeded
+	}
+
+	// TODO: validate transaction before adding to block
+	block.Transactions = append(block.Transactions, trx)
+	return nil
+}
+
+func (block *Block) Mine() bool {
+	pow := NewProofOfWork(block)
+	return pow.Run()
+}
+
+func (block *Block) Validate() error {
+	//TODO: validate other consensus rukes for block
+	if !block.validatePOW() {
+		return errors.New("proof of work validation failed")
+	}
+
+	return nil
+}
+
+func (block *Block) validatePOW() bool {
 	blockHash := block.HeaderHash()
 	blockHashInt := new(big.Int).SetBytes(blockHash[:])
 
@@ -75,13 +98,41 @@ func (block *Block) Validate() bool {
 	return blockHashInt.Cmp(targetInt) == -1
 }
 
-func (block *Block) Serialize() ([]byte, error) {
-	buff := new(bytes.Buffer)
+type BlockManager struct {
+	transactionManager *TransactionManager
+}
 
-	err := binary.Write(buff, binary.BigEndian, block)
+func NewBlockManager(tm *TransactionManager) *BlockManager {
+	return &BlockManager{
+		transactionManager: tm,
+	}
+}
+
+func (bm *BlockManager) CreateBlock(previousHash [32]byte, coinbaseData string) (*Block, error) {
+	coinbase, err := bm.transactionManager.CreateCoinbaseTransaction(coinbaseData)
 	if err != nil {
-		return []byte{}, fmt.Errorf("error serializing block: %s", err)
+		return nil, err
 	}
 
-	return buff.Bytes(), nil
+	timestamp := time.Now().Unix()
+	block := &Block{
+		Version:      share.Uint32ToByte4(uint32(1)),
+		PreviousHash: previousHash,
+		MerkleRoot:   [32]byte{},
+		Timestamp:    share.Int64ToByte8(timestamp),
+		Coinbase:     coinbase,
+		Transactions: make([]*StdTransaction, 0),
+	}
+
+	counter := 0
+	for _, trx := range bm.transactionManager.mempool.transactions {
+		if counter == MaxBlockSize {
+			break
+		}
+
+		block.AddTransaction(trx)
+		counter += 1
+	}
+
+	return block, nil
 }

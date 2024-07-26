@@ -3,8 +3,10 @@ module github.com/jenlesamuel/magcoin
 go 1.21.4
 
 require (
+	github.com/btcsuite/btcutil v1.0.2
 	github.com/dgraph-io/badger v1.6.2
 	github.com/stretchr/testify v1.9.0
+	golang.org/x/crypto v0.0.0-20200115085410-6d4e4cb37c7d
 )
 
 require (

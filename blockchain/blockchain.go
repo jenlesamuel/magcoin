@@ -14,9 +14,10 @@ const (
 type Blockchain struct {
 	DB                  *badger.DB
 	LastBlockHeaderHash [32]byte
+	BlockManager        *BlockManager
 }
 
-func InitBlockchain(db *badger.DB) (*Blockchain, error) {
+func LoadBlockchain(db *badger.DB, bm *BlockManager) (*Blockchain, error) {
 
 	var lastBlockHeaderHash []byte
 
@@ -24,14 +25,21 @@ func InitBlockchain(db *badger.DB) (*Blockchain, error) {
 		item, err := txn.Get([]byte(LastBlockHeaderHash))
 		if err != nil {
 			if err == badger.ErrKeyNotFound { // blockchain not yet persisted in db
-				genesisBlock := NewBlock(
-					share.Uint32ToByte4(uint32(1)),
+				genesisBlock, err := bm.CreateBlock(
 					share.Int32ToByte32(0),
-					share.SliceToByte32([]byte("Genesis")),
-				)
-				genesisBlockHeaderHash := genesisBlock.HeaderHash()
-				lastBlockHeaderHash = genesisBlockHeaderHash[:]
-				genesisBlockBytes, err := genesisBlock.Serialize()
+					"MagCoin: Bitcoin Parody 0x1F923")
+
+				if err != nil {
+					return fmt.Errorf("error creating Genesis block: %s", err)
+				}
+
+				if !genesisBlock.Mine() {
+					return fmt.Errorf("could not mine Genesis block: %s", err)
+				}
+
+				headerHash := genesisBlock.HeaderHash()
+				lastBlockHeaderHash = headerHash[:]
+				genesisBlockBytes, err := genesisBlock.Encode()
 				if err != nil {
 					return fmt.Errorf("error serializing genesis block: %s", err)
 				}
@@ -39,6 +47,7 @@ func InitBlockchain(db *badger.DB) (*Blockchain, error) {
 				if err = txn.Set([]byte(LastBlockHeaderHash), lastBlockHeaderHash); err != nil {
 					return fmt.Errorf("could not persist last block hash to db: %s", err)
 				}
+
 				if err = txn.Set(lastBlockHeaderHash, genesisBlockBytes[:]); err != nil {
 					return fmt.Errorf("could not persist block to db: %s", err)
 				}
@@ -64,20 +73,25 @@ func InitBlockchain(db *badger.DB) (*Blockchain, error) {
 		return nil, fmt.Errorf("could not initialize blockchain from db: %s", err)
 	}
 
-	blockChain := &Blockchain{DB: db, LastBlockHeaderHash: share.SliceToByte32(lastBlockHeaderHash)}
+	blockChain := &Blockchain{
+		DB:                  db,
+		LastBlockHeaderHash: share.SliceToByte32(lastBlockHeaderHash),
+		BlockManager:        bm,
+	}
 
 	return blockChain, nil
 }
 
-func (bc *Blockchain) AddBlock(data string) error {
+func (bc *Blockchain) AddBlock(block *Block) error {
 
-	lastBlockHeaderHash := bc.LastBlockHeaderHash
-	version := share.Uint32ToByte4(1)
-	dataByte32 := share.SliceToByte32([]byte(data))
+	var err error
 
-	block := NewBlock(version, lastBlockHeaderHash, dataByte32)
+	if err = block.Validate(); err != nil {
+		return err
+	}
+
 	blockHeaderHash := block.HeaderHash()
-	blockBytes, err := block.Serialize()
+	blockBytes, err := block.Encode()
 	if err != nil {
 		return fmt.Errorf("could not serialize block: %s", err)
 	}
@@ -120,12 +134,13 @@ func (iterator *BlockchainIterator) Next() (*Block, error) {
 
 	err := iterator.DB.View(func(txn *badger.Txn) error {
 		item, err := txn.Get(iterator.CurrentHash[:])
+
 		if err != nil {
 			return err
 		}
 
 		err = item.Value(func(value []byte) error {
-			next, err = FromBytes(value)
+			next, err = DecodeToBlock(value)
 			if err != nil {
 				return err
 			}
