@@ -7,8 +7,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
-	"encoding/hex"
-	"errors"
 	"math/big"
 
 	"github.com/btcsuite/btcutil/base58"
@@ -46,7 +44,6 @@ func GetPublicKeyBytes(publicKey *ecdsa.PublicKey) ([]byte, error) {
 	if err != nil {
 		return make([]byte, 0), nil
 	}
-
 	return pkBytes, nil
 }
 
@@ -67,7 +64,7 @@ func GetPublicKeyHashFromPublicKey(publicKey *ecdsa.PublicKey) ([20]byte, error)
 
 	b20 := [20]byte{}
 	copy(b20[:], b)
- 
+
 	return b20, nil
 }
 
@@ -96,28 +93,28 @@ func ValidateAddress(address string) bool {
 	return bytes.Equal(doubleHash[:4], checksum)
 }
 
-func HexToPublicKey(pkHex string) (*ecdsa.PublicKey, error) {
-	pkHexBytes, err := hex.DecodeString(pkHex)
-	if err != nil {
-		return nil, err
-	}
+// func HexToPublicKey(pkHex string) (*ecdsa.PublicKey, error) {
+// 	pkHexBytes, err := hex.DecodeString(pkHex)
+// 	if err != nil {
+// 		return nil, err
+// 	}
 
-	//validate public key bytes.
-	if len(pkHexBytes) != 65 || pkHexBytes[0] != 0x04 {
-		return nil, errors.New("invalid public key format")
-	}
+// 	//validate public key bytes.
+// 	if len(pkHexBytes) != 65 || pkHexBytes[0] != 0x04 {
+// 		return nil, errors.New("invalid public key format")
+// 	}
 
-	x := new(big.Int).SetBytes(pkHexBytes[1:33])
-	y := new(big.Int).SetBytes(pkHexBytes[33:])
+// 	x := new(big.Int).SetBytes(pkHexBytes[1:33])
+// 	y := new(big.Int).SetBytes(pkHexBytes[33:])
 
-	publicKey := &ecdsa.PublicKey{
-		Curve: elliptic.P256(),
-		X:     x,
-		Y:     y,
-	}
+// 	publicKey := &ecdsa.PublicKey{
+// 		Curve: elliptic.P256(),
+// 		X:     x,
+// 		Y:     y,
+// 	}
 
-	return publicKey, nil
-}
+// 	return publicKey, nil
+// }
 
 func DoubleSha256(data []byte) [32]byte {
 	singleHash := sha256.Sum256(data)
@@ -129,7 +126,7 @@ func GetPublicKeyHashFromAddress(address string) [20]byte {
 	addressBytes := base58.Decode(address)
 
 	pkHash := [20]byte{}
-	copy(pkHash[:], addressBytes)
+	copy(pkHash[:], addressBytes[:20])
 
 	return pkHash
 }

@@ -3,17 +3,17 @@ package blockchain
 import "sync"
 
 type MemPool struct {
-	transactions map[string]*StdTransaction
+	transactions map[string]*Transaction
 	mu           sync.RWMutex
 }
 
 func NewMemPool() *MemPool {
 	return &MemPool{
-		transactions: make(map[string]*StdTransaction),
+		transactions: make(map[string]*Transaction),
 	}
 }
 
-func (mp *MemPool) AddTransaction(idx string, trx *StdTransaction) {
+func (mp *MemPool) AddTransaction(idx string, trx *Transaction) {
 	mp.mu.Lock()
 	defer mp.mu.Unlock()
 
@@ -27,7 +27,7 @@ func (mp *MemPool) DeleteTransaction(idx string) {
 	delete(mp.transactions, idx)
 }
 
-func (mp *MemPool) GetTransaction(idx string) *StdTransaction {
+func (mp *MemPool) GetTransaction(idx string) *Transaction {
 	mp.mu.RLock()
 	defer mp.mu.RUnlock()
 

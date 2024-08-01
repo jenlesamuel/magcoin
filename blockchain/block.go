@@ -21,9 +21,7 @@ type Block struct {
 	Nonce        [4]byte
 	Target       [32]byte
 	Timestamp    [8]byte
-	Coinbase     *CoinbaseTransaction
-	// had issue with encoding block, so had to separate coinbase from standard transaction
-	Transactions []*StdTransaction
+	Transactions []*Transaction
 }
 
 func DecodeToBlock(data []byte) (*Block, error) {
@@ -65,7 +63,7 @@ func (block *Block) Encode() ([]byte, error) {
 	return buff.Bytes(), nil
 }
 
-func (block *Block) AddTransaction(trx *StdTransaction) error {
+func (block *Block) AddTransaction(trx *Transaction) error {
 	if len(block.Transactions) > MaxBlockSize {
 		return ErrMaxBlockSizeExceeded
 	}
@@ -120,8 +118,7 @@ func (bm *BlockManager) CreateBlock(previousHash [32]byte, coinbaseData string) 
 		PreviousHash: previousHash,
 		MerkleRoot:   [32]byte{},
 		Timestamp:    share.Int64ToByte8(timestamp),
-		Coinbase:     coinbase,
-		Transactions: make([]*StdTransaction, 0),
+		Transactions: []*Transaction{coinbase},
 	}
 
 	counter := 0

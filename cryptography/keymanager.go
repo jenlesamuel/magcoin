@@ -1,6 +1,7 @@
 package cryptography
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -16,10 +17,23 @@ import (
 )
 
 const PrivateKeyFilename = "mag_ecdsa_private_key.pem"
+const AddressFilename = "mag_wallet_address.txt"
 
 type Signature struct {
 	R *big.Int
 	S *big.Int
+}
+
+func (s *Signature) Bytes() []byte {
+	rBytes := s.R.Bytes()
+	sBytes := s.S.Bytes()
+
+	return bytes.Join([][]byte{rBytes, sBytes}, []byte{})
+}
+
+// TODO: implement
+func SignatureFromBytes(b []byte) *Signature {
+	return nil
 }
 
 type KeyManager struct {
@@ -44,8 +58,18 @@ func LoadKeyManager(dest string) (*KeyManager, error) {
 		if err = writePrivateKeyToFile(privateKey, dest); err != nil {
 			return nil, err
 		}
-	}
 
+		address, err := share.AddressFromPublicKey(&privateKey.PublicKey)
+		if err != nil {
+			return nil, err
+		}
+
+		path := fmt.Sprintf("%s/%s", dest, AddressFilename)
+		if err = writeAddressToFile(address, path); err != nil {
+			return nil, err
+		}
+	}
+	share.GetPublicKeyBytes(&privateKey.PublicKey)
 	return &KeyManager{PrivateKey: privateKey, PublicKey: &privateKey.PublicKey}, nil
 }
 
@@ -67,7 +91,6 @@ func (km *KeyManager) VerifySignature(hash []byte, signature *Signature) bool {
 }
 
 func generatePrivateKey() (*ecdsa.PrivateKey, error) {
-
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, err
@@ -125,4 +148,18 @@ func (km *KeyManager) GetPublicKeyHash() ([20]byte, error) {
 
 func (km *KeyManager) GetAddress() (string, error) {
 	return share.AddressFromPublicKey(km.PublicKey)
+}
+
+func writeAddressToFile(address, path string) error {
+	file, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	if _, err = file.WriteString(address); err != nil {
+		return err
+	}
+
+	return nil
 }

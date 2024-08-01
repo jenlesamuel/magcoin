@@ -5,7 +5,7 @@ import (
 	"encoding/gob"
 	"encoding/hex"
 	"errors"
-	"math/big"
+	"fmt"
 
 	"github.com/jenlesamuel/magcoin/cryptography"
 	"github.com/jenlesamuel/magcoin/share"
@@ -14,46 +14,34 @@ import (
 func init() {
 	gob.Register(TrxInput{})
 	gob.Register(TrxOutput{})
-	gob.Register(CoinbaseInput{})
-	gob.Register(cryptography.Signature{})
-	gob.Register(StdTransaction{})
-	gob.Register(CoinbaseTransaction{})
+	gob.Register(Transaction{})
 }
 
 type TrxInput struct {
 	OutpointHash  [32]byte // the hash of the referenced transaction
 	OutpointIndex [4]byte  //the index of the referenced transaction output
-	Signature     *cryptography.Signature
+	SigOrData     []byte
 	PublicKey     []byte
 }
 
 type TrxOutput struct {
-	Amount        uint64 //amount of maglia
+	Amount        [8]byte //amount of maglia
 	PublicKeyHash [20]byte
 }
 
-type CoinbaseInput struct {
-	Data []byte
-}
-
-type CoinbaseTransaction struct {
-	Input  *CoinbaseInput
-	Output []*TrxOutput
-}
-
-type StdTransaction struct {
+type Transaction struct {
 	Input  []*TrxInput
 	Output []*TrxOutput
 }
 
 // TODO: implement validate
-func (st *StdTransaction) Validate() bool {
+func (trx *Transaction) Validate() bool {
 	return false
 }
 
-func (st *StdTransaction) Hash() ([32]byte, error) {
+func (trx *Transaction) Hash() ([32]byte, error) {
 	// TODO: separate signature from hash to prevent transaction malleability
-	trxBytes, err := st.Serialize()
+	trxBytes, err := trx.Serialize()
 	if err != nil {
 		return [32]byte{}, err
 	}
@@ -61,11 +49,11 @@ func (st *StdTransaction) Hash() ([32]byte, error) {
 	return share.DoubleSha256(trxBytes), nil
 }
 
-func (st *StdTransaction) Serialize() ([]byte, error) {
+func (trx *Transaction) Serialize() ([]byte, error) {
 	buff := new(bytes.Buffer)
 	empty := make([]byte, 0)
 
-	for idx, input := range st.Input {
+	for idx, input := range trx.Input {
 		if _, err := buff.Write(input.OutpointHash[:]); err != nil {
 			return empty, err
 		}
@@ -78,21 +66,13 @@ func (st *StdTransaction) Serialize() ([]byte, error) {
 			return empty, err
 		}
 
-		rBytes := new(big.Int).Set(input.Signature.R).Bytes()
-		sBytes := new(big.Int).Set(input.Signature.S).Bytes()
-
-		if _, err := buff.Write(rBytes[:]); err != nil {
+		if _, err := buff.Write(input.SigOrData); err != nil {
 			return empty, err
 		}
 
-		if _, err := buff.Write(sBytes[:]); err != nil {
-			return empty, err
-		}
+		output := trx.Output[idx]
 
-		output := st.Output[idx]
-
-		amountBytes := share.Int64ToByte8(int64(output.Amount))
-		if _, err := buff.Write(amountBytes[:]); err != nil {
+		if _, err := buff.Write(output.Amount[:]); err != nil {
 			return empty, err
 		}
 
@@ -116,12 +96,12 @@ func NewTransactionManager(mempool *MemPool, keymanager *cryptography.KeyManager
 	}
 }
 
-func (tm *TransactionManager) CreateStdTransaction(inputs []*TrxInput, outputs []*TrxOutput) (*StdTransaction, error) {
+func (tm *TransactionManager) CreateStdTransaction(inputs []*TrxInput, outputs []*TrxOutput) (*Transaction, error) {
 	if len(inputs) != len(outputs) {
 		return nil, errors.New("transaction input and output must be of the same length")
 	}
 
-	trx := &StdTransaction{
+	trx := &Transaction{
 		Input:  inputs,
 		Output: outputs,
 	}
@@ -149,8 +129,7 @@ func (tm *TransactionManager) CreateStdTransaction(inputs []*TrxInput, outputs [
 
 		// parse trx output
 		output := trx.Output[idx]
-		amountBytes8 := share.Int64ToByte8(int64(output.Amount))
-		if _, err := buff.Write(amountBytes8[:]); err != nil {
+		if _, err := buff.Write(output.Amount[:]); err != nil {
 			return nil, err
 		}
 
@@ -163,7 +142,7 @@ func (tm *TransactionManager) CreateStdTransaction(inputs []*TrxInput, outputs [
 			return nil, err
 		}
 
-		input.Signature = trxSign
+		input.SigOrData = trxSign.Bytes()
 	}
 
 	hash, err := trx.Hash()
@@ -178,9 +157,17 @@ func (tm *TransactionManager) CreateStdTransaction(inputs []*TrxInput, outputs [
 	return trx, nil
 }
 
-func (tm *TransactionManager) CreateCoinbaseTransaction(data string) (*CoinbaseTransaction, error) {
-	input := &CoinbaseInput{
-		Data: []byte(data),
+func (tm *TransactionManager) CreateCoinbaseTransaction(data string) (*Transaction, error) {
+	dataBytes := []byte(data)
+	if len(dataBytes) < 2 || len(dataBytes) > 100 {
+		return nil, fmt.Errorf("coinbase data size of %d exceeds limit of 2 - 100 bytes", len(dataBytes))
+	}
+
+	input := &TrxInput{
+		OutpointHash:  [32]byte{},
+		OutpointIndex: [4]byte{0x01, 0x00, 0x00, 0x00}, //big endian
+		SigOrData:     dataBytes,
+		PublicKey:     []byte{},
 	}
 
 	pkHash, err := share.GetPublicKeyHashFromPublicKey(tm.keymanager.PublicKey)
@@ -189,9 +176,9 @@ func (tm *TransactionManager) CreateCoinbaseTransaction(data string) (*CoinbaseT
 	}
 
 	output := &TrxOutput{
-		Amount:        5_000_000_000, // 5,000,000,000 maglia, equivalent of 1 magcoin
+		Amount:        share.Int64ToByte8(5_000_000_000), // 5,000,000,000 maglia, equivalent of 1 magcoin
 		PublicKeyHash: pkHash,
 	}
 
-	return &CoinbaseTransaction{Input: input, Output: []*TrxOutput{output}}, nil
+	return &Transaction{Input: []*TrxInput{input}, Output: []*TrxOutput{output}}, nil
 }

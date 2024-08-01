@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -55,7 +54,8 @@ func (cli *CommandLine) Exec() {
 	args := os.Args
 
 	if len(args) == 1 {
-		log.Panic(errors.New("no command specified"))
+		cli.printHelp()
+		return
 	}
 
 	switch args[1] {

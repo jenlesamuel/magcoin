@@ -27,16 +27,6 @@ func Int32ToByte32(n int32) [32]byte {
 	return dst
 }
 
-func IntToByte1(n int) [1]byte {
-	b := make([]byte, 2)
-	binary.BigEndian.PutUint16(b, uint16(n))
-
-	dst := [1]byte{}
-	copy(dst[:], b)
-
-	return dst
-}
-
 func Int64ToByte8(n int64) [8]byte {
 	b := make([]byte, 8)
 	binary.BigEndian.PutUint64(b, uint64(n))
