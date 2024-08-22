@@ -1,6 +1,8 @@
-package blockchain
+package transaction
 
-import "sync"
+import (
+	"sync"
+)
 
 type MemPool struct {
 	transactions map[string]*Transaction

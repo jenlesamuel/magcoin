@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jenlesamuel/magcoin/share"
+	"github.com/jenlesamuel/magcoin/transaction"
 )
 
 const MaxBlockSize = 5
@@ -15,13 +16,13 @@ const MaxBlockSize = 5
 var ErrMaxBlockSizeExceeded = errors.New("maximum block size exceeded")
 
 type Block struct {
-	Version      [4]byte
-	PreviousHash [32]byte
-	MerkleRoot   [32]byte
-	Nonce        [4]byte
-	Target       [32]byte
-	Timestamp    [8]byte
-	Transactions []*Transaction
+	Version      []byte //4 bytes
+	PreviousHash []byte //32 bytes
+	MerkleRoot   []byte // 32 bytes
+	Nonce        []byte // 4 bytes
+	Target       []byte
+	Timestamp    []byte // 8 bytes
+	Transactions []*transaction.Transaction
 }
 
 func DecodeToBlock(data []byte) (*Block, error) {
@@ -36,7 +37,7 @@ func DecodeToBlock(data []byte) (*Block, error) {
 	return block, nil
 }
 
-func (block *Block) HeaderHashWithNonce(nonce [4]byte) [32]byte {
+func (block *Block) HeaderHashWithNonce(nonce []byte) []byte {
 	concat := bytes.Join([][]byte{
 		block.Version[:],
 		block.PreviousHash[:],
@@ -45,10 +46,11 @@ func (block *Block) HeaderHashWithNonce(nonce [4]byte) [32]byte {
 		block.Timestamp[:],
 	}, []byte{})
 
-	return share.DoubleSha256(concat)
+	hash := share.DoubleSha256(concat)
+	return hash[:]
 }
 
-func (block *Block) HeaderHash() [32]byte {
+func (block *Block) HeaderHash() []byte {
 	return block.HeaderHashWithNonce(block.Nonce)
 }
 
@@ -63,7 +65,7 @@ func (block *Block) Encode() ([]byte, error) {
 	return buff.Bytes(), nil
 }
 
-func (block *Block) AddTransaction(trx *Transaction) error {
+func (block *Block) AddTransaction(trx *transaction.Transaction) error {
 	if len(block.Transactions) > MaxBlockSize {
 		return ErrMaxBlockSizeExceeded
 	}
@@ -96,39 +98,52 @@ func (block *Block) validatePOW() bool {
 	return blockHashInt.Cmp(targetInt) == -1
 }
 
-type BlockManager struct {
-	transactionManager *TransactionManager
+func (block *Block) IsGenesis() bool {
+	return bytes.Equal(block.PreviousHash[:], make([]byte, 32))
 }
 
-func NewBlockManager(tm *TransactionManager) *BlockManager {
+type BlockManager struct {
+	transactionManager *transaction.TransactionManager
+}
+
+func NewBlockManager(tm *transaction.TransactionManager) *BlockManager {
 	return &BlockManager{
 		transactionManager: tm,
 	}
 }
 
-func (bm *BlockManager) CreateBlock(previousHash [32]byte, coinbaseData string) (*Block, error) {
+func (bm *BlockManager) CreateBlock(previousHash []byte, coinbaseData string) (*Block, error) {
 	coinbase, err := bm.transactionManager.CreateCoinbaseTransaction(coinbaseData)
 	if err != nil {
 		return nil, err
 	}
 
 	timestamp := time.Now().Unix()
-	block := &Block{
-		Version:      share.Uint32ToByte4(uint32(1)),
+
+	return &Block{
+		Version:      share.IntToBytes(1),
 		PreviousHash: previousHash,
-		MerkleRoot:   [32]byte{},
-		Timestamp:    share.Int64ToByte8(timestamp),
-		Transactions: []*Transaction{coinbase},
+		MerkleRoot:   make([]byte, 32),
+		Timestamp:    share.Int64ToBytes(timestamp),
+		Transactions: []*transaction.Transaction{coinbase},
+	}, nil
+}
+
+// Creates the first block in the blockchain
+func (bm *BlockManager) GenesisBlock() (*Block, error) {
+	coinbase, err := bm.transactionManager.CreateCoinbaseTransaction("MagCoin: Bitcoin Parody 0x1F923")
+	if err != nil {
+		return nil, err
 	}
 
-	counter := 0
-	for _, trx := range bm.transactionManager.mempool.transactions {
-		if counter == MaxBlockSize {
-			break
-		}
+	timestamp := time.Now().Unix()
 
-		block.AddTransaction(trx)
-		counter += 1
+	block := &Block{
+		Version:      share.IntToBytes(1),
+		PreviousHash: make([]byte, 32),
+		MerkleRoot:   make([]byte, 32),
+		Timestamp:    share.Int64ToBytes(timestamp),
+		Transactions: []*transaction.Transaction{coinbase},
 	}
 
 	return block, nil

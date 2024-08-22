@@ -1,12 +1,16 @@
 package cli
 
 import (
+	"errors"
+	"flag"
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
-	"github.com/jenlesamuel/magcoin/blockchain"
+	"github.com/jenlesamuel/magcoin/api"
 	"github.com/jenlesamuel/magcoin/share"
+	"github.com/jenlesamuel/magcoin/transaction"
 )
 
 const (
@@ -15,12 +19,11 @@ const (
 )
 
 type CommandLine struct {
-	Blockchain         *blockchain.Blockchain
-	TransactionManager *blockchain.TransactionManager
+	api *api.API
 }
 
-func NewCommandLine(bc *blockchain.Blockchain, tm *blockchain.TransactionManager) *CommandLine {
-	return &CommandLine{Blockchain: bc, TransactionManager: tm}
+func NewCommandLine(api *api.API) *CommandLine {
+	return &CommandLine{api: api}
 }
 
 func (cli *CommandLine) printHelp() {
@@ -29,25 +32,13 @@ func (cli *CommandLine) printHelp() {
 
 		Usage:
 
-			magcoin <command> [arguments]
+			magcoin [flags] <command> [arguments]
 		
 		The commands are:
 
 		publish				print all the blocks in the blockchain
 		create-transaction  creates a standard transaction i.e a non-coinbase transaction
 	`)
-}
-
-func (cli *CommandLine) ValidateArgs(args []string) bool {
-	if len(args) == 1 {
-		return false
-	}
-
-	if args[1] == Add && len(args) < 3 {
-		return false
-	}
-
-	return true
 }
 
 func (cli *CommandLine) Exec() {
@@ -63,122 +54,51 @@ func (cli *CommandLine) Exec() {
 		if err := cli.printBlockchain(); err != nil {
 			log.Panic(err)
 		}
-	/*case "create-transaction":
-	if err := cli.execCreateTransaction(); err != nil {
-		log.Panic(err)
-	}*/
+	case "create-transaction":
+		var trx *transaction.Transaction
+		var err error
+		if trx, err = cli.execCreateTransaction(); err != nil {
+			log.Panic(err)
+		}
+		log.Printf("Transaction Created: %+v", trx)
 	default:
 		cli.printHelp()
 	}
 }
 
-/*func (cli *CommandLine) execCreateTransaction() error {
-	outpointHashes := flag.String("outpoint-hashes", "", "command delimited list of referenced transaction hashes")
-	outpointIndices := flag.String("outpoint-indices", "", "command delimited list of referenced transaction output indices that corresponding"+
-		"to the outpoint hashes")
-	receiverAddresses := flag.String("receiver-addresses", "", "a comma delimited list of the addresses of the receivers")
-	amounts := flag.String("amounts", "", "a comma delimited list of the amounts in Maglia that coresponds to the"+
-		"public-key-hashes of the receivers")
+func (cli *CommandLine) execCreateTransaction() (*transaction.Transaction, error) {
+	os.Args = os.Args[1:]
+	receiverAddress := flag.String("receiver-address", "", "address of the receiver")
+	amount := flag.Uint64("amount", 0, "amount to be sent to the receiver in maglia (100,000,000 maglia = 1 magcoin)")
 
 	flag.Parse()
 
-	*outpointHashes = strings.Trim(*outpointHashes, " ")
-	*outpointIndices = strings.Trim(*outpointIndices, " ")
-	*receiverAddresses = strings.Trim(*receiverAddresses, " ")
-	*amounts = strings.Trim(*amounts, " ")
+	*receiverAddress = strings.TrimSpace(*receiverAddress)
 
-	if *outpointHashes == "" {
-		return errors.New("outpoint-hashes cannot be empty")
+	if *receiverAddress == "" {
+		return nil, errors.New("receiver address cannot be empty")
 	}
 
-	if *outpointIndices == "" {
-		return errors.New("outpoint-indices cannot be empty")
+	if *amount < 1 || *amount > share.MAX_MAGLIA {
+		return nil, fmt.Errorf("transaction amount should be minimum of 1 maglia and less than %d maglias (21 million magcoins)", share.MAX_MAGLIA)
 	}
 
-	if *receiverAddresses == "" {
-		return errors.New("public-key-hashes cannot be empty")
-	}
-
-	if *amounts == "" {
-		return errors.New("amounts cannot be empty")
-	}
-
-	outpointHashesArr := strings.Split(*outpointHashes, ",")
-	outpointIndicesArr := strings.Split(*outpointIndices, ",")
-	receiverAddressesArr := strings.Split(*receiverAddresses, ",")
-	amountsArr := strings.Split(*amounts, ",")
-
-	minLength := min(len(outpointHashesArr), len(outpointIndicesArr), len(receiverAddressesArr), len(amountsArr))
-
-	var trxInputs []*blockchain.TrxInput
-	var trxOutputs []*blockchain.TrxOutput
-
-	for i := 0; i < minLength; i++ {
-		outpointHashByte, err := hex.DecodeString(outpointHashesArr[i])
-		if err != nil {
-			return err
-		}
-		outpointHashByte32 := share.SliceToByte32(outpointHashByte)
-
-		outpointIndexByte, err := hex.DecodeString(outpointIndicesArr[i])
-		if err != nil {
-			return err
-		}
-		outpointIndexByte4 := share.SliceToByte4(outpointIndexByte)
-
-		publicKeyHashByte20 := share.GetPublicKeyHashFromAddress(receiverAddressesArr[i])
-
-		amount, err := strconv.Atoi(amountsArr[i])
-		if err != nil {
-			return err
-		}
-
-		trxInput := &blockchain.TrxInput{
-			OutpointHash:  outpointHashByte32,
-			OutpointIndex: outpointIndexByte4,
-		}
-
-		trxOutput := &blockchain.TrxOutput{
-			Amount:        uint64(amount),
-			PublicKeyHash: publicKeyHashByte20,
-		}
-
-		trxInputs = append(trxInputs, trxInput)
-		trxOutputs = append(trxOutputs, trxOutput)
-
-	}
-
-	if _, err := cli.TransactionManager.CreateStdTransaction(trxInputs, trxOutputs); err != nil {
-		return err
-	}
-
-	return nil
+	return cli.api.CreateTransaction(*amount, *receiverAddress)
 }
 
-func min(nums ...int) int {
-	min := nums[0]
-
-	for _, num := range nums {
-		if num < min {
-			min = num
-		}
-	}
-
-	return min
-}*/
-
 func (cli *CommandLine) printBlockchain() error {
-	iterator := cli.Blockchain.Iterator()
+	iterator := cli.api.GetIterator()
 
 	log.Println("/**********Blocks**********/")
 
 	for {
 		block, err := iterator.Next()
+
 		if err != nil {
 			return fmt.Errorf("error occured while printing blockchain: %s", err)
 		}
 
-		timestamp, err := share.Byte8ToInt64(block.Timestamp)
+		timestamp, err := share.BytesToInt64(block.Timestamp)
 		if err != nil {
 			return fmt.Errorf("could not convert [8]byte to int64: %s", err)
 		}
@@ -187,7 +107,7 @@ func (cli *CommandLine) printBlockchain() error {
 		log.Printf("Previous Hash: %X\t", block.PreviousHash)
 		log.Printf("Timestamp: %d\n", timestamp)
 
-		if share.IsZeroArray(block.PreviousHash) {
+		if block.IsGenesis() {
 			break
 		}
 	}

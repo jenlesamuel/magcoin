@@ -3,9 +3,12 @@ package main
 import (
 	"log"
 
+	"github.com/jenlesamuel/magcoin/api"
 	"github.com/jenlesamuel/magcoin/blockchain"
 	"github.com/jenlesamuel/magcoin/cli"
-	"github.com/jenlesamuel/magcoin/cryptography"
+	"github.com/jenlesamuel/magcoin/share"
+	"github.com/jenlesamuel/magcoin/transaction"
+	"github.com/jenlesamuel/magcoin/wallet"
 )
 
 func main() {
@@ -19,27 +22,38 @@ func main() {
 
 	// Init KeyManager
 	keysPath := "/tmp"
-	keymanager, err := cryptography.LoadKeyManager(keysPath)
+	keymanager, err := share.LoadKeyManager(keysPath)
 	if err != nil {
 		log.Panicf("%s\n", err)
 	}
 
 	// Init Mempool
-	mempool := blockchain.NewMemPool()
+	mempool := transaction.NewMemPool()
 
 	// Init TransactionManager
-	transactionManager := blockchain.NewTransactionManager(mempool, keymanager)
+	transactionManager := transaction.NewTransactionManager(keymanager)
 
 	// Init BlockManager
 	blockManager := blockchain.NewBlockManager(transactionManager)
 
-	// Init Blockchain
-	bc, err := blockchain.LoadBlockchain(db, blockManager)
+	genesisBlock, err := blockManager.GenesisBlock()
 	if err != nil {
 		log.Panicf("%s\n", err)
 	}
 
+	// Init Blockchain
+	bc, err := blockchain.LoadBlockchain(db, genesisBlock)
+	if err != nil {
+		log.Panicf("%s\n", err)
+	}
+
+	//Init Wallet Manager
+	walletManager := wallet.NewWalletManager(bc.Iterator(), keymanager, mempool)
+
+	// Init API
+	api := api.NewAPI(bc.Iterator(), walletManager)
+
 	// Run CLI
-	cli := cli.NewCommandLine(bc, transactionManager)
+	cli := cli.NewCommandLine(api)
 	cli.Exec()
 }

@@ -1,4 +1,4 @@
-package cryptography
+package share
 
 import (
 	"bytes"
@@ -12,8 +12,6 @@ import (
 	"math/big"
 	"os"
 	"strings"
-
-	"github.com/jenlesamuel/magcoin/share"
 )
 
 const PrivateKeyFilename = "mag_ecdsa_private_key.pem"
@@ -59,7 +57,7 @@ func LoadKeyManager(dest string) (*KeyManager, error) {
 			return nil, err
 		}
 
-		address, err := share.AddressFromPublicKey(&privateKey.PublicKey)
+		address, err := AddressFromPublicKey(&privateKey.PublicKey)
 		if err != nil {
 			return nil, err
 		}
@@ -69,7 +67,7 @@ func LoadKeyManager(dest string) (*KeyManager, error) {
 			return nil, err
 		}
 	}
-	share.GetPublicKeyBytes(&privateKey.PublicKey)
+
 	return &KeyManager{PrivateKey: privateKey, PublicKey: &privateKey.PublicKey}, nil
 }
 
@@ -143,11 +141,11 @@ func loadPrivateKeyFromFile(file string) (*ecdsa.PrivateKey, error) {
 }
 
 func (km *KeyManager) GetPublicKeyHash() ([20]byte, error) {
-	return share.GetPublicKeyHashFromPublicKey(km.PublicKey)
+	return GetPublicKeyHashFromPublicKey(km.PublicKey)
 }
 
 func (km *KeyManager) GetAddress() (string, error) {
-	return share.AddressFromPublicKey(km.PublicKey)
+	return AddressFromPublicKey(km.PublicKey)
 }
 
 func writeAddressToFile(address, path string) error {

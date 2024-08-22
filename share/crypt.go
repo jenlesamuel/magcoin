@@ -7,16 +7,10 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
-	"math/big"
 
 	"github.com/btcsuite/btcutil/base58"
 	"golang.org/x/crypto/ripemd160"
 )
-
-type Signature struct {
-	R *big.Int
-	S *big.Int
-}
 
 func GeneratePrivateKey() (*ecdsa.PrivateKey, error) {
 	return ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -93,40 +87,17 @@ func ValidateAddress(address string) bool {
 	return bytes.Equal(doubleHash[:4], checksum)
 }
 
-// func HexToPublicKey(pkHex string) (*ecdsa.PublicKey, error) {
-// 	pkHexBytes, err := hex.DecodeString(pkHex)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	//validate public key bytes.
-// 	if len(pkHexBytes) != 65 || pkHexBytes[0] != 0x04 {
-// 		return nil, errors.New("invalid public key format")
-// 	}
-
-// 	x := new(big.Int).SetBytes(pkHexBytes[1:33])
-// 	y := new(big.Int).SetBytes(pkHexBytes[33:])
-
-// 	publicKey := &ecdsa.PublicKey{
-// 		Curve: elliptic.P256(),
-// 		X:     x,
-// 		Y:     y,
-// 	}
-
-// 	return publicKey, nil
-// }
-
 func DoubleSha256(data []byte) [32]byte {
 	singleHash := sha256.Sum256(data)
 
 	return sha256.Sum256(singleHash[:])
 }
 
-func GetPublicKeyHashFromAddress(address string) [20]byte {
+func PublicKeyHashFromAddress(address string) []byte {
 	addressBytes := base58.Decode(address)
 
 	pkHash := [20]byte{}
 	copy(pkHash[:], addressBytes[:20])
 
-	return pkHash
+	return pkHash[:]
 }

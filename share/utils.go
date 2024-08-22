@@ -5,15 +5,20 @@ import (
 	"encoding/binary"
 )
 
-func Uint32ToByte4(n uint32) [4]byte {
+func IntToBytes(n int) []byte {
 	b := make([]byte, 4)
 
-	binary.BigEndian.PutUint32(b, n)
+	binary.BigEndian.PutUint32(b, uint32(n))
 
-	dst := [4]byte{}
-	copy(dst[:], b)
+	return b
+}
 
-	return dst
+func IntToBytes32(n int) []byte {
+	b := make([]byte, 32)
+
+	binary.BigEndian.PutUint32(b, uint32(n))
+
+	return b
 }
 
 func Int32ToByte32(n int32) [32]byte {
@@ -27,14 +32,11 @@ func Int32ToByte32(n int32) [32]byte {
 	return dst
 }
 
-func Int64ToByte8(n int64) [8]byte {
+func Int64ToBytes(n int64) []byte {
 	b := make([]byte, 8)
 	binary.BigEndian.PutUint64(b, uint64(n))
 
-	dst := [8]byte{}
-	copy(dst[:], b)
-
-	return dst
+	return b
 }
 
 func SliceToByte32(slice []byte) [32]byte {
@@ -53,7 +55,7 @@ func SliceToByte4(slice []byte) [4]byte {
 	return b
 }
 
-func SliceToByte20(slice []byte) [20]byte {
+func BytesSliceToByte20(slice []byte) [20]byte {
 	b := [20]byte{}
 
 	copy(b[:], slice)
@@ -61,22 +63,28 @@ func SliceToByte20(slice []byte) [20]byte {
 	return b
 }
 
-func IsZeroArray(b [32]byte) bool {
-	b2 := [32]byte{}
-
-	return bytes.Equal(b[:], b2[:])
-}
-
-func SliceToInt32(b []byte) (uint32, error) {
+func BytesToInt(b []byte) (int, error) {
 	buff := bytes.NewReader(b)
-	var num uint32
+	var num uint
 
 	err := binary.Read(buff, binary.BigEndian, &num)
 	if err != nil {
-		return num, err
+		return int(num), err
 	}
 
-	return num, nil
+	return int(num), nil
+}
+
+func BytesToInt64(b []byte) (int64, error) {
+	buff := bytes.NewReader(b)
+	var num uint64
+
+	err := binary.Read(buff, binary.BigEndian, &num)
+	if err != nil {
+		return int64(num), err
+	}
+
+	return int64(num), nil
 }
 
 func Byte8ToInt64(b [8]byte) (int64, error) {

@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/dgraph-io/badger"
-	"github.com/jenlesamuel/magcoin/share"
 )
 
 const (
@@ -13,11 +12,10 @@ const (
 
 type Blockchain struct {
 	DB                  *badger.DB
-	LastBlockHeaderHash [32]byte
-	BlockManager        *BlockManager
+	LastBlockHeaderHash []byte
 }
 
-func LoadBlockchain(db *badger.DB, bm *BlockManager) (*Blockchain, error) {
+func LoadBlockchain(db *badger.DB, genesisBlock *Block) (*Blockchain, error) {
 
 	var lastBlockHeaderHash []byte
 
@@ -25,13 +23,6 @@ func LoadBlockchain(db *badger.DB, bm *BlockManager) (*Blockchain, error) {
 		item, err := txn.Get([]byte(LastBlockHeaderHash))
 		if err != nil {
 			if err == badger.ErrKeyNotFound { // blockchain not yet persisted in db
-				genesisBlock, err := bm.CreateBlock(
-					share.Int32ToByte32(0),
-					"MagCoin: Bitcoin Parody 0x1F923")
-
-				if err != nil {
-					return fmt.Errorf("error creating Genesis block: %s", err)
-				}
 
 				if !genesisBlock.Mine() {
 					return fmt.Errorf("could not mine Genesis block: %s", err)
@@ -75,8 +66,7 @@ func LoadBlockchain(db *badger.DB, bm *BlockManager) (*Blockchain, error) {
 
 	blockChain := &Blockchain{
 		DB:                  db,
-		LastBlockHeaderHash: share.SliceToByte32(lastBlockHeaderHash),
-		BlockManager:        bm,
+		LastBlockHeaderHash: lastBlockHeaderHash,
 	}
 
 	return blockChain, nil
@@ -117,19 +107,19 @@ func (bc *Blockchain) AddBlock(block *Block) error {
 	return nil
 }
 
-func (bc *Blockchain) Iterator() *BlockchainIterator {
-	return &BlockchainIterator{
+func (bc *Blockchain) Iterator() *BlockIterator {
+	return &BlockIterator{
 		DB:          bc.DB,
 		CurrentHash: bc.LastBlockHeaderHash,
 	}
 }
 
-type BlockchainIterator struct {
+type BlockIterator struct {
 	DB          *badger.DB
-	CurrentHash [32]byte
+	CurrentHash []byte
 }
 
-func (iterator *BlockchainIterator) Next() (*Block, error) {
+func (iterator *BlockIterator) Next() (*Block, error) {
 	var next *Block
 
 	err := iterator.DB.View(func(txn *badger.Txn) error {

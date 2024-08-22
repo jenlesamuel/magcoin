@@ -28,14 +28,14 @@ func (p *ProofOfWork) Run() bool {
 	intHash := new(big.Int)
 
 	for nonce < ^uint32(0) {
-		nonceByte4 := share.Uint32ToByte4(nonce)
+		nonceByte4 := share.IntToBytes(int(nonce))
 
 		blockHash := p.Block.HeaderHashWithNonce(nonceByte4)
 		intHash.SetBytes(blockHash[:])
 
 		if intHash.Cmp(p.Target) == -1 {
 			p.Block.Nonce = nonceByte4
-			p.Block.Target = share.SliceToByte32(p.Target.Bytes())
+			p.Block.Target = p.Target.Bytes()
 
 			return true
 		}
